@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Servo Control Panel</title>
+  <style>
+    body {
+      background-color: #222;
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px;
+      margin: 0;
+      user-select: none;
+    }
+    .panel {
+      background: #333;
+      border: 4px solid #555;
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: inset 0 0 10px #000, 0 8px 20px rgba(0,0,0,0.6);
+      box-sizing: border-box;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+      letter-spacing: 2px;
+      color: #ccc;
+      border-bottom: 2px solid #555;
+      padding-bottom: 8px;
+    }
+
+    /* 7セグ風ディスプレイ */
+    .seg-display {
+      background-color: #111;
+      border: 3px inset #444;
+      color: #f00;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 2.5rem;
+      font-weight: bold;
+      text-align: right;
+      padding: 5px 15px;
+      letter-spacing: 6px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 8px rgba(255, 0, 0, 0.7);
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      color: #aaa;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      border-left: 3px solid #07f;
+      padding-left: 6px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 20px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 45%;
+      background: #2a2a2a;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    .control-group label { font-size: 0.8rem; margin-top: 6px; color: #ddd; }
+    .control-group label.switch { margin-top: 10px; }
+
+    input[type="range"] { width: 80%; margin: 10px 0; }
+    input[type="range"]:disabled { opacity: 0.4; }
+
+    /* トグルスイッチ */
+    .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #555; transition: .3s; border-radius: 26px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px;
+      background-color: white; transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider.danger { background-color: #f44336; }
+    input:checked + .slider:before { transform: translateX(24px); }
+    input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
+
+    /* S-ON 実効状態インジケータ */
+    .son-state { font-size: 0.75rem; margin-top: 6px; color: #888; }
+    .son-state.on  { color: #ff6b6b; font-weight: bold; }
+
+    /* BT接続ボタン */
+    .btn-connect {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: bold;
+      background-color: #008CBA;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      box-shadow: 0 4px #005f73;
+    }
+    .btn-connect:active { box-shadow: 0 2px #005f73; transform: translateY(2px); }
+
+    .status {
+      font-size: 0.8rem;
+      color: #aaa;
+      text-align: center;
+      min-height: 1.2em;
+      margin-bottom: 12px;
+    }
+    .status.err { color: #ff8a80; }
+  </style>
+</head>
+<body>
+
+<div class="panel">
+  <h2>SERVO CONTROLLER</h2>
+
+  <button class="btn-connect" id="btnConnect">Bluetooth 接続</button>
+  <div class="status" id="status">未接続</div>
+
+  <!-- 7セグ風ディスプレイ -->
+  <div class="seg-display" id="display">0000</div>
+
+  <!-- 仮想スイッチ: HW / BT 優先切替 -->
+  <div class="section-title">Priority Mode</div>
+  <div class="row" style="justify-content: center; align-items: center; gap: 15px; margin-bottom: 20px;">
+    <span>HW</span>
+    <label class="switch">
+      <input type="checkbox" id="swPrio" disabled>
+      <span class="slider danger"></span>
+    </label>
+    <span>BT (SmartPhone)</span>
+  </div>
+
+  <!-- 軸1 -->
+  <div class="section-title">AXIS 1</div>
+  <div class="row">
+    <div class="control-group">
+      <label>AMP (振幅)</label>
+      <input type="range" id="potA1Amp" min="0" max="1023" value="0" disabled>
+      <span id="valA1Amp">0</span>
+    </div>
+    <div class="control-group">
+      <label>FREQ (周波数)</label>
+      <input type="range" id="potA1Freq" min="0" max="1023" value="0" disabled>
+      <span id="valA1Freq">0</span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="control-group">
+      <label>MODE (0:PC / 1:正弦波)</label>
+      <label class="switch">
+        <input type="checkbox" id="swMode1" disabled>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="control-group">
+      <label>S-ON</label>
+      <label class="switch">
+        <input type="checkbox" id="swSon1" disabled>
+        <span class="slider danger"></span>
+      </label>
+      <div class="son-state" id="sonState1">出力: OFF</div>
+    </div>
+  </div>
+
+  <!-- 軸2 -->
+  <div class="section-title">AXIS 2</div>
+  <div class="row">
+    <div class="control-group">
+      <label>AMP (振幅)</label>
+      <input type="range" id="potA2Amp" min="0" max="1023" value="0" disabled>
+      <span id="valA2Amp">0</span>
+    </div>
+    <div class="control-group">
+      <label>FREQ (周波数)</label>
+      <input type="range" id="potA2Freq" min="0" max="1023" value="0" disabled>
+      <span id="valA2Freq">0</span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="control-group">
+      <label>MODE (0:PC / 1:正弦波)</label>
+      <label class="switch">
+        <input type="checkbox" id="swMode2" disabled>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="control-group">
+      <label>S-ON</label>
+      <label class="switch">
+        <input type="checkbox" id="swSon2" disabled>
+        <span class="slider danger"></span>
+      </label>
+      <div class="son-state" id="sonState2">出力: OFF</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---- Arduino UNO R4 (v4) の Nordic UART Service ----
+  // ※ Web Bluetooth の UUID は小文字で指定する必要がある
+  const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const NUS_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // スマホ → Arduino (Write)
+  const NUS_TX      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Arduino → スマホ (Notify)
+
+  const KEEPALIVE_MS    = 500;   // Arduino側タイムアウト(2000ms)より十分短く
+  const PRIO_CONFIRM_MS = 2000;  // PRIO切替の確認待ち時間
+  const CHUNK = 20;              // 既定MTU(23)のペイロード上限
+
+  // $ST の並び順 = a1, f1, a2, f2
+  const POTS = [
+    { key: 'A1_AMP',  slider: 'potA1Amp',  val: 'valA1Amp'  },
+    { key: 'A1_FREQ', slider: 'potA1Freq', val: 'valA1Freq' },
+    { key: 'A2_AMP',  slider: 'potA2Amp',  val: 'valA2Amp'  },
+    { key: 'A2_FREQ', slider: 'potA2Freq', val: 'valA2Freq' },
+  ];
+  const $ = (id) => document.getElementById(id);
+
+  let device = null, rxChar = null, txChar = null;
+  let btPrio = false;            // Arduinoが報告した実際の優先状態
+  let prioPendingTo = null;      // 切替要求中 (true/false/null)
+  let prioPendingUntil = 0;
+  let keepAliveTimer = null;
+  let queue = [];                // 送信キュー {text, key}
+  let pumping = false;
+  let rxBuf = '';
+  let lastVals = null;
+
+  // ---------------- UI ヘルパ ----------------
+  function setStatus(text, isErr = false) {
+    const el = $('status');
+    el.textContent = text;
+    el.classList.toggle('err', isErr);
+  }
+
+  function setControlsEnabled(on) {
+    POTS.forEach(p => { $(p.slider).disabled = !on; });
+    ['swMode1', 'swMode2', 'swSon1', 'swSon2'].forEach(id => { $(id).disabled = !on; });
+  }
+
+  function showDisplay(v) { $('display').textContent = String(v).padStart(4, '0'); }
+
+  function setConnectedUi(connected) {
+    $('btnConnect').textContent = connected ? '切断' : 'Bluetooth 接続';
+    $('btnConnect').style.backgroundColor = connected ? '#4CAF50' : '#008CBA';
+    $('swPrio').disabled = !connected;
+    if (!connected) {
+      $('swPrio').checked = false;
+      setControlsEnabled(false);
+    }
+  }
+
+  function syncControls(st) {
+    POTS.forEach((p, i) => { $(p.slider).value = st.vals[i]; $(p.val).textContent = st.vals[i]; });
+    $('swMode1').checked = st.mode[0] === 1;
+    $('swMode2').checked = st.mode[1] === 1;
+    $('swSon1').checked  = st.son[0] === 1;
+    $('swSon2').checked  = st.son[1] === 1;
+  }
+
+  function updateSonIndicators(st) {
+    [0, 1].forEach(i => {
+      const el = $('sonState' + (i + 1));
+      el.textContent = '出力: ' + (st.son[i] === 1 ? 'ON' : 'OFF');
+      el.classList.toggle('on', st.son[i] === 1);
+    });
+  }
+
+  // ---------------- 送信キュー ----------------
+  // GATT書き込みは1つずつ順番に行う (同時実行すると "GATT operation already in progress")
+  // key が同じ未送信コマンドは最新値で置き換える (スライダー連続操作で溜めない)
+  function enqueue(text, key = null) {
+    if (!rxChar) return;
+    if (key) {
+      const idx = queue.findIndex(q => q.key === key);
+      if (idx >= 0) { queue[idx].text = text; pump(); return; }
+    }
+    queue.push({ text, key });
+    pump();
+  }
+
+  async function writeChunks(text) {
+    const data = new TextEncoder().encode(text);
+    for (let o = 0; o < data.length; o += CHUNK) {
+      const chunk = data.slice(o, o + CHUNK);
+      if (rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(chunk);
+      else await rxChar.writeValue(chunk);
+    }
+  }
+
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (queue.length && rxChar) {
+        const item = queue.shift();
+        await writeChunks(item.text);
+      }
+    } catch (e) {
+      queue = [];
+      setStatus('送信エラー: ' + e.message, true);
+    } finally {
+      pumping = false;
+    }
+  }
+
+  // ---------------- 受信 ($ST ステータス) ----------------
+  function onNotify(ev) {
+    rxBuf += new TextDecoder().decode(ev.target.value);
+    if (rxBuf.length > 400) rxBuf = '';
+    let i;
+    while ((i = rxBuf.indexOf('\n')) >= 0) {
+      const line = rxBuf.slice(0, i).trim();
+      rxBuf = rxBuf.slice(i + 1);
+      parseStatus(line);
+    }
+  }
+
+  // $ST,prio,a1,f1,a2,f2,m1,m2,s1,s2*
+  function parseStatus(line) {
+    const m = /^\$ST,(\d+(?:,\d+){8})\*$/.exec(line);
+    if (!m) return;
+    const a = m[1].split(',').map(Number);
+    applyStatus({ prio: a[0] === 1, vals: a.slice(1, 5), mode: [a[5], a[6]], son: [a[7], a[8]] });
+  }
+
+  function applyStatus(st) {
+    updateSonIndicators(st);
+
+    // 切替要求直後は、古いステータス(要求前の状態)を無視する
+    if (prioPendingTo !== null) {
+      if (st.prio === prioPendingTo) {
+        prioPendingTo = null;
+      } else if (Date.now() < prioPendingUntil) {
+        return;
+      } else {
+        prioPendingTo = null;
+        setStatus('優先モードの切替が確認できませんでした', true);
+      }
+    }
+
+    const wasPrio = btPrio;
+    btPrio = st.prio;
+    $('swPrio').checked = btPrio;
+    setControlsEnabled(btPrio);
+
+    if (!btPrio) {
+      // ハードモード: 実機の値を表示のみ (操作不可)
+      if (wasPrio) setStatus('ハードウェア優先 (BT側は操作できません)');
+      if (lastVals) {
+        const k = st.vals.findIndex((v, i) => v !== lastVals[i]);
+        if (k >= 0) showDisplay(st.vals[k]);
+      }
+      syncControls(st);
+    } else if (!wasPrio) {
+      // BT優先に入った直後: 実機の現在値に画面を合わせる (値が飛ばない)
+      syncControls(st);
+      setStatus('BT優先中 (S-ONはハードのS-ON SWがONのときのみ出力)');
+    }
+    lastVals = st.vals.slice();
+  }
+
+  // ---------------- 接続 / 切断 ----------------
+  function startKeepAlive() {
+    stopKeepAlive();
+    keepAliveTimer = setInterval(() => {
+      // BT優先 (または切替要求中) の間、PINGでArduino側のタイムアウトを防ぐ
+      if ($('swPrio').checked && queue.length === 0 && !pumping) enqueue('PING\n');
+    }, KEEPALIVE_MS);
+  }
+  function stopKeepAlive() {
+    if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+  }
+
+  function onDisconnected() {
+    stopKeepAlive();
+    rxChar = txChar = null;
+    queue = [];
+    pumping = false;
+    rxBuf = '';
+    btPrio = false;
+    prioPendingTo = null;
+    lastVals = null;
+    setConnectedUi(false);
+    setStatus('切断されました (Arduinoはハードウェアモードに戻ります)');
+  }
+
+  async function connect() {
+    if (!navigator.bluetooth) {
+      setStatus('このブラウザはWeb Bluetoothに非対応です (Android/PCのChrome・Edgeを使用)', true);
+      return;
+    }
+    try {
+      setStatus('デバイスを選択してください...');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [NUS_SERVICE] }, { namePrefix: 'UNO-R4' }],
+        optionalServices: [NUS_SERVICE],
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      setStatus('接続中...');
+      const server  = await device.gatt.connect();
+      const service = await server.getPrimaryService(NUS_SERVICE);
+      rxChar = await service.getCharacteristic(NUS_RX);
+      txChar = await service.getCharacteristic(NUS_TX);
+
+      txChar.addEventListener('characteristicvaluechanged', onNotify);
+      await txChar.startNotifications();
+
+      setConnectedUi(true);
+      startKeepAlive();
+      setStatus('接続しました (ハードウェア優先)。BT優先に切り替えると操作できます');
+    } catch (e) {
+      if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
+      rxChar = txChar = null;
+      setConnectedUi(false);
+      if (e && e.name === 'NotFoundError' && /cancel/i.test(e.message)) setStatus('接続をキャンセルしました');
+      else setStatus('接続エラー: ' + (e && e.message ? e.message : e), true);
+    }
+  }
+
+  async function disconnect() {
+    try {
+      // 念のためハードモードへ戻してから切断 (失敗しても切断時にArduino側で自動復帰する)
+      if (rxChar && $('swPrio').checked) { enqueue('PRIO=0\n'); await new Promise(r => setTimeout(r, 150)); }
+    } catch (_) {}
+    if (device && device.gatt.connected) device.gatt.disconnect();
+    else onDisconnected();
+  }
+
+  $('btnConnect').addEventListener('click', () => {
+    if (rxChar && device && device.gatt.connected) disconnect();
+    else connect();
+  });
+
+  // ---------------- 操作イベント ----------------
+  $('swPrio').addEventListener('change', () => {
+    const want = $('swPrio').checked;
+    prioPendingTo = want;
+    prioPendingUntil = Date.now() + PRIO_CONFIRM_MS;
+    if (!want) setControlsEnabled(false);
+    setStatus(want ? 'BT優先へ切替中...' : 'ハードウェア優先へ切替中...');
+    enqueue(`PRIO=${want ? 1 : 0}\n`);
+  });
+
+  POTS.forEach(p => {
+    $(p.slider).addEventListener('input', (e) => {
+      const v = e.target.value;
+      $(p.val).textContent = v;
+      showDisplay(v);
+      enqueue(`${p.key}=${v}\n`, p.key);
+    });
+  });
+
+  [['swMode1', 'MODE1'], ['swMode2', 'MODE2'], ['swSon1', 'SON1'], ['swSon2', 'SON2']].forEach(([id, key]) => {
+    $(id).addEventListener('change', (e) => enqueue(`${key}=${e.target.checked ? 1 : 0}\n`, key));
+  });
+
+  setConnectedUi(false);
+})();
+</script>
+</body>
+</html>
